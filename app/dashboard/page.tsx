@@ -1,14 +1,33 @@
 import Link from "next/link"
+import { unstable_noStore as noStore } from "next/cache"
 
 import { DashboardShell } from "@/components/dashboard/dashboard-shell"
 import { KnowledgeTable } from "@/components/dashboard/knowledge-table"
 import { Button } from "@/components/ui/button"
 import { requireAdminAuthentication } from "@/lib/auth"
-import { listKnowledgeItems } from "@/lib/knowledge/server"
+import { getKnowledgeItem, listKnowledgeItems } from "@/lib/knowledge/server"
 
-export default async function DashboardPage() {
+type DashboardPageProps = {
+  searchParams: Promise<{
+    created?: string
+  }>
+}
+
+export default async function DashboardPage({
+  searchParams,
+}: DashboardPageProps) {
+  noStore()
   await requireAdminAuthentication()
+  const { created } = await searchParams
   const knowledgeItems = await listKnowledgeItems()
+
+  if (created && !knowledgeItems.some((item) => item.id === created)) {
+    const createdKnowledgeItem = await getKnowledgeItem(created)
+
+    if (createdKnowledgeItem) {
+      knowledgeItems.unshift(createdKnowledgeItem)
+    }
+  }
 
   return (
     <DashboardShell

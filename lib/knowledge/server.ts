@@ -129,7 +129,10 @@ export async function createKnowledgeItem(
   const downloadedAudio = await downloadYoutubeAudio(input.videoUrl)
 
   try {
-    const transcription = await transcribeAudioFile(downloadedAudio.audioPath)
+    const transcription = await transcribeAudioFile(
+      downloadedAudio.audioPath,
+      downloadedAudio.metadata.durationSeconds
+    )
     const uploadResult = await uploadTranscriptToVectorStore({
       metadata: downloadedAudio.metadata,
       transcriptText: transcription.formattedTranscript,
