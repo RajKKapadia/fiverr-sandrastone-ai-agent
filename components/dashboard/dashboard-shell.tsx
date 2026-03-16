@@ -31,9 +31,9 @@ export function DashboardShell({
               {backHref && backLabel ? (
                 <Button
                   asChild
-                  variant="ghost"
+                  variant="dark"
                   size="sm"
-                  className="h-auto px-0 text-slate-600 hover:bg-transparent hover:text-slate-950"
+                  className="h-10 rounded-xl px-4 shadow-[0_14px_34px_rgba(15,23,42,0.18)]"
                 >
                   <Link href={backHref}>{backLabel}</Link>
                 </Button>
@@ -58,8 +58,8 @@ export function DashboardShell({
                 <Button
                   type="submit"
                   size="lg"
-                  variant="outline"
-                  className="h-11 rounded-2xl border-slate-900/15 bg-white/80 px-5 hover:bg-white"
+                  variant="dark"
+                  className="h-11 rounded-2xl px-5 shadow-[0_14px_34px_rgba(15,23,42,0.18)]"
                 >
                   Log out
                 </Button>
