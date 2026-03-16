@@ -102,8 +102,8 @@ export function KnowledgeTable({ items }: KnowledgeTableProps) {
                         <Button
                           asChild
                           size="sm"
-                          variant="outline"
-                          className="rounded-xl"
+                          variant="dark"
+                          className="rounded-xl shadow-[0_14px_34px_rgba(15,23,42,0.18)]"
                         >
                           <Link href={`/dashboard/transcripts/${item.id}`}>
                             View Transcript

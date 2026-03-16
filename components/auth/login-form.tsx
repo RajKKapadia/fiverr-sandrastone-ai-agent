@@ -19,7 +19,7 @@ function SubmitButton() {
     <Button
       type="submit"
       size="lg"
-      className="h-11 w-full rounded-2xl bg-foreground text-background hover:bg-foreground/90"
+      className="h-11 w-full rounded-2xl bg-slate-950 text-white shadow-[0_14px_34px_rgba(15,23,42,0.18)] hover:bg-slate-800"
       disabled={pending}
     >
       {pending ? "Signing in..." : "Sign in"}
