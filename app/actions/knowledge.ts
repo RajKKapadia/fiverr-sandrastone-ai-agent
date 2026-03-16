@@ -49,11 +49,15 @@ export async function createKnowledgeAction(
     }
   }
 
+  let createdKnowledgeItemId = ""
+
   try {
-    await createKnowledgeItem({
+    const createdKnowledgeItem = await createKnowledgeItem({
       topicName,
       videoUrl,
     })
+
+    createdKnowledgeItemId = createdKnowledgeItem.id
   } catch (error) {
     console.error("Failed to create knowledge item", error)
 
@@ -70,7 +74,11 @@ export async function createKnowledgeAction(
   revalidatePath("/dashboard")
   revalidatePath("/dashboard/add")
   refresh()
-  redirect("/dashboard")
+  redirect(
+    createdKnowledgeItemId
+      ? `/dashboard?created=${encodeURIComponent(createdKnowledgeItemId)}`
+      : "/dashboard"
+  )
 }
 
 export async function deleteKnowledgeAction(formData: FormData) {
