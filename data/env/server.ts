@@ -10,6 +10,8 @@ function getServerEnv() {
     ADMIN_EMAIL: process.env.ADMIN_EMAIL!,
     ADMIN_PASSWORD: process.env.ADMIN_PASSWORD!,
     OPENAI_VECTOR_STORE_ID: process.env.OPENAI_VECTOR_STORE_ID!,
+    DATABASE_URL: process.env.DATABASE_URL!,
+    NODE_ENV: process.env.NODE_ENV!,
   } as const;
 }
 
