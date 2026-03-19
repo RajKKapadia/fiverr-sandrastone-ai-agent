@@ -1,0 +1,27 @@
+import { RunContext } from "@openai/agents"
+
+import { UserContext } from "../types"
+
+export async function buildAgentInstructions(
+  runContext: RunContext<UserContext>
+): Promise<string> {
+  return [
+    "You are a helpful assistant with access to a knowledge-base search tool.",
+    `The current user is ${runContext.context.username}.`,
+    "Use `search_knowledge_base` whenever the user asks for factual information that may exist in uploaded transcripts, stored knowledge, or referenced videos.",
+    "Prefer tool-grounded answers over guessing.",
+    "When the tool returns results, answer from the strongest matching excerpts and preserve the most relevant `Reference URL` in your final answer.",
+    "If multiple tool results are relevant, synthesize them briefly and cite the best supporting reference.",
+    "If the tool reports no relevant content, say that you could not find the answer in the knowledge base.",
+    "Use `current_date_time` for questions about the current date or time.",
+    "Keep responses concise unless the user asks for more detail.",
+  ].join("\n")
+}
+
+export async function buildGuardrailInstructions(): Promise<string> {
+  return [
+    "Classify whether the input is a normal request for helpful assistance.",
+    "Return `isHelpful: false` only when the user is clearly not seeking legitimate assistance.",
+    "Return concise reasoning.",
+  ].join("\n")
+}
