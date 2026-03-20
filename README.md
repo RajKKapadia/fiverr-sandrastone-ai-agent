@@ -1,21 +1,47 @@
-# Next.js template
+# Admin Dashboard
 
-This is a Next.js template with shadcn/ui.
+This project manages transcript-backed knowledge files and now includes an
+embeddable website chat widget powered by the existing OpenAI agent.
 
-## Adding components
+## Widget Setup
 
-To add components to your app, run the following command:
+Add these environment variables:
 
-```bash
-npx shadcn@latest add button
+```env
+WIDGET_SIGNING_SECRET=replace-with-a-long-random-secret
+WIDGET_SITE_CONFIGS=[
+  {
+    "siteKey": "demo-site",
+    "origins": ["http://localhost:3000", "https://example.com"],
+    "title": "SandraStone Assistant",
+    "placeholder": "Ask about the videos..."
+  }
+]
 ```
 
-This will place the ui components in the `components` directory.
+`WIDGET_SITE_CONFIGS` must be valid JSON. Each entry defines the public
+`siteKey`, the exact allowed origins, and optional UI copy for the iframe.
 
-## Using components
+## Widget Embed
 
-To use the components in your app, import them as follows:
+Load the widget on an allowed website with:
 
-```tsx
-import { Button } from "@/components/ui/button";
+```html
+<script
+  src="https://your-dashboard-domain.com/widget/embed"
+  data-site-key="demo-site"
+  data-position="bottom-right"
+></script>
 ```
+
+The loader exposes `window.SandraStoneWidget` with:
+
+```ts
+window.SandraStoneWidget.open()
+window.SandraStoneWidget.close()
+window.SandraStoneWidget.toggle()
+window.SandraStoneWidget.sendMessage("What does the video say about entries?")
+const unsubscribe = window.SandraStoneWidget.on("ready", () => {})
+```
+
+Supported events: `ready`, `open`, `close`, `message_sent`, `error`.

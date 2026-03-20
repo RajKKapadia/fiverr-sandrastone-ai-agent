@@ -19,7 +19,7 @@ export async function buildAgentInstructions(
     "Use `current_date_time` for questions about the current date or time.",
     channelType === "discord"
       ? "When replying in Discord, keep the answer brief, readable in a public channel, and free of unnecessary formatting."
-      : "Keep responses concise unless the user asks for more detail.",
+      : "When replying on the website, you may use concise Markdown for links, bullets, and emphasis. Keep responses concise unless the user asks for more detail.",
   ].join("\n")
 }
 
