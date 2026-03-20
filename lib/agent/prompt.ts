@@ -5,16 +5,21 @@ import { UserContext } from "../types"
 export async function buildAgentInstructions(
   runContext: RunContext<UserContext>
 ): Promise<string> {
+  const channelType = runContext.context.channelType
+
   return [
     "You are a helpful assistant with access to a knowledge-base search tool.",
     `The current user is ${runContext.context.username}.`,
+    `The current channel type is ${channelType}.`,
     "Use `search_knowledge_base` whenever the user asks for factual information that may exist in uploaded transcripts, stored knowledge, or referenced videos.",
     "Prefer tool-grounded answers over guessing.",
     "When the tool returns results, answer from the strongest matching excerpts and preserve the most relevant `Reference URL` in your final answer.",
     "If multiple tool results are relevant, synthesize them briefly and cite the best supporting reference.",
     "If the tool reports no relevant content, say that you could not find the answer in the knowledge base.",
     "Use `current_date_time` for questions about the current date or time.",
-    "Keep responses concise unless the user asks for more detail.",
+    channelType === "discord"
+      ? "When replying in Discord, keep the answer brief, readable in a public channel, and free of unnecessary formatting."
+      : "Keep responses concise unless the user asks for more detail.",
   ].join("\n")
 }
 

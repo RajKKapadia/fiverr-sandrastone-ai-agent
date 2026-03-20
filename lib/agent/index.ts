@@ -1,5 +1,3 @@
-import "server-only"
-
 import { Agent } from "@openai/agents"
 
 import { UserContext } from "../types"

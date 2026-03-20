@@ -1,5 +1,3 @@
-import "server-only"
-
 import { tool } from "@openai/agents"
 import { z } from "zod"
 
@@ -168,7 +166,7 @@ export const currentDateTimeTool = tool({
 export const searchKnowledgeBaseTool = tool({
   name: "search_knowledge_base",
   description:
-    "Search the uploaded vector database for relevant knowledge and return excerpts with source references.",
+    "Search the uploaded vector database for trading related information.",
   parameters: z.object({
     maxResults: z.number().int().min(1).max(MAX_MAX_RESULTS).default(DEFAULT_MAX_RESULTS),
     query: z.string().trim().min(1),
@@ -180,7 +178,7 @@ export const searchKnowledgeBaseTool = tool({
       return [
         `Knowledge base search for: "${input.query}"`,
         "",
-        "No relevant content was found in the vector database.",
+        "No trading related information was found in the vector database.",
       ].join("\n")
     }
 
