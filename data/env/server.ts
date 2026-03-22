@@ -14,6 +14,8 @@ function getServerEnv() {
     DISCORD_APPLICATION_ID: process.env.DISCORD_APPLICATION_ID ?? "",
     DISCORD_BOT_TOKEN: process.env.DISCORD_BOT_TOKEN ?? "",
     DISCORD_ALLOWED_GUILD_IDS: process.env.DISCORD_ALLOWED_GUILD_IDS ?? "",
+    WIDGET_SITE_CONFIGS: process.env.WIDGET_SITE_CONFIGS ?? "",
+    WIDGET_SIGNING_SECRET: process.env.WIDGET_SIGNING_SECRET ?? "",
     NODE_ENV: process.env.NODE_ENV!,
   } as const;
 }
