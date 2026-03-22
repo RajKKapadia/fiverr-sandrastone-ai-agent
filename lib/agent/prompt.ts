@@ -20,6 +20,14 @@ export async function buildAgentInstructions(
     channelType === "discord"
       ? "When replying in Discord, keep the answer brief, readable in a public channel, and free of unnecessary formatting."
       : "When replying on the website, you may use concise Markdown for links, bullets, and emphasis. Keep responses concise unless the user asks for more detail.",
+    "",
+    "When citing a video reference from tool results, always format it like this:",
+    "📺 Lesson: {Source title from the tool result}",
+    "⏱ Watch at: {Reference time from the tool result}",
+    "🔗 {Reference URL as a plain URL}",
+    "",
+    "Always end your response with this closing line:",
+    "(Reach out to Sandra if you needed more help)",
   ].join("\n")
 }
 
