@@ -10,6 +10,7 @@ import {
 } from "discord.js"
 
 import { primaryAgent } from "@/lib/agent"
+import { generateOutOfScopeResponse } from "@/lib/agent/out-of-scope"
 import type { UserContext } from "@/lib/types"
 
 import {
@@ -253,7 +254,12 @@ async function runDiscordAsk(input: {
     return formatDiscordResponse(finalOutput)
   } catch (error) {
     if (error instanceof InputGuardrailTripwireTriggered) {
-      return formatDiscordResponse("I'm sorry, I can't answer that question.")
+      const response = await generateOutOfScopeResponse({
+        message: query,
+        userContext: input.userContext,
+      })
+
+      return formatDiscordResponse(response)
     }
     throw error
   }

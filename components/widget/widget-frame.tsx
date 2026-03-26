@@ -418,9 +418,15 @@ export function WidgetFrame({ siteKey }: WidgetFrameProps) {
   }, [isOpen, isStreaming, messages])
 
   return (
-    <div className="flex h-[100svh] w-full items-end justify-end bg-transparent p-0">
+    <div
+      className={
+        isOpen
+          ? "flex h-[100svh] w-full items-end justify-end overflow-hidden rounded-[2rem] bg-[radial-gradient(circle_at_top,_rgba(245,180,123,0.2),_transparent_38%),linear-gradient(180deg,#fffaf3_0%,#f5efe5_100%)] p-0"
+          : "flex h-[100svh] w-full items-end justify-end bg-transparent p-0"
+      }
+    >
       {isOpen ? (
-        <section className="flex h-full w-full flex-col overflow-hidden rounded-[2rem] border border-[#d8c7b2] bg-[radial-gradient(circle_at_top,_rgba(245,180,123,0.2),_transparent_38%),linear-gradient(180deg,#fffaf3_0%,#f5efe5_100%)] shadow-[0_20px_90px_rgba(15,23,42,0.18)]">
+        <section className="flex h-full w-full flex-col overflow-hidden rounded-[2rem] border border-[#d8c7b2] bg-[radial-gradient(circle_at_top,_rgba(245,180,123,0.2),_transparent_38%),linear-gradient(180deg,#fffaf3_0%,#f5efe5_100%)]">
           <header className="relative overflow-hidden border-b border-[#e7d6c0] px-4 py-4 sm:px-5">
             <div className="absolute inset-x-0 top-0 h-full bg-[linear-gradient(135deg,rgba(157,79,31,0.08),rgba(251,191,36,0.02))]" />
             <div className="relative flex items-start justify-between gap-4">
