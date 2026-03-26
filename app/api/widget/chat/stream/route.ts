@@ -2,6 +2,7 @@ import { InputGuardrailTripwireTriggered, run } from "@openai/agents"
 import { z } from "zod"
 
 import { primaryAgent } from "@/lib/agent"
+import { generateOutOfScopeResponse } from "@/lib/agent/out-of-scope"
 import type { UserContext } from "@/lib/types"
 import { getBearerToken, getWidgetUserId, verifyWidgetSessionToken } from "@/lib/widget/auth"
 import { beginWidgetRequest, endWidgetRequest, getWidgetRequestBlockReason } from "@/lib/widget/rate-limit"
@@ -38,9 +39,12 @@ function isTimeoutError(error: unknown) {
   )
 }
 
-function getErrorMessage(error: unknown) {
+async function getErrorMessage(error: unknown, input: {
+  message: string
+  userContext: UserContext
+}) {
   if (error instanceof InputGuardrailTripwireTriggered) {
-    return "I'm sorry, I can't answer that question."
+    return generateOutOfScopeResponse(input)
   }
 
   if (isTimeoutError(error)) {
@@ -185,7 +189,10 @@ export async function POST(request: Request) {
         })
 
         send("error", {
-          message: getErrorMessage(error),
+          message: await getErrorMessage(error, {
+            message: body.message,
+            userContext: createWebsiteUserContext(userId),
+          }),
         })
       } finally {
         endWidgetRequest(userId)

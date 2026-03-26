@@ -39,7 +39,7 @@ function renderInlineMarkdown(text: string) {
             key={`${match.index}-${href}`}
             href={href}
             target="_blank"
-            rel="noreferrer"
+            rel="noopener noreferrer"
             className="font-medium text-[#9f4f1f] underline decoration-[#d49d7a] underline-offset-4 transition hover:text-[#7d3f18]"
           >
             {label}

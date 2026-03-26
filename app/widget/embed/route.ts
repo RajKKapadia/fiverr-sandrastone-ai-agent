@@ -119,6 +119,8 @@ function getEmbedScript() {
     iframe.style.border = "0";
     iframe.style.background = "transparent";
     iframe.style.colorScheme = "light";
+    iframe.style.display = "block";
+    iframe.style.overflow = "hidden";
     iframe.style.borderRadius = "28px";
     iframe.style.boxShadow = "0 18px 70px rgba(15, 23, 42, 0.18)";
     iframe.style.transition = "width 180ms ease, height 180ms ease, box-shadow 180ms ease";
