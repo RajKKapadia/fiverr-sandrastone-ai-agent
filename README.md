@@ -3,6 +3,21 @@
 This project manages transcript-backed knowledge files and now includes an
 embeddable website chat widget powered by the existing OpenAI agent.
 
+## Discord Bot Setup
+
+Add these environment variables for the Discord bot:
+
+```env
+DISCORD_BOT_TOKEN=replace-with-your-bot-token
+DISCORD_APPLICATION_ID=replace-with-your-application-id
+DISCORD_ALLOWED_GUILD_IDS=123456789012345678
+DISCORD_ALLOWED_CHANNEL_IDS=234567890123456789
+```
+
+`DISCORD_ALLOWED_GUILD_IDS` and `DISCORD_ALLOWED_CHANNEL_IDS` accept comma- or
+newline-separated Discord IDs. The bot only responds to non-bot, non-empty
+messages posted in the configured channel IDs.
+
 ## Widget Setup
 
 Add these environment variables:

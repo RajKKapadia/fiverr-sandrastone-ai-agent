@@ -7,7 +7,7 @@ import { Client, Events, GatewayIntentBits } from "discord.js"
 
 import { serverEnv } from "@/data/env/server"
 
-import { syncGuildCommands } from "./commands"
+import { clearGuildCommands } from "./commands"
 import { registerDiscordHandlers } from "./handlers"
 
 function requireNonEmptyValue(name: string, value: string) {
@@ -20,31 +20,27 @@ function requireNonEmptyValue(name: string, value: string) {
   return normalized
 }
 
-function parseAllowedGuildIds(value: string) {
-  const guildIds = new Set(
+function parseAllowedDiscordIds(name: string, value: string, label: string) {
+  const ids = new Set(
     value
       .split(/[,\n]+/)
-      .map((guildId) => guildId.trim().replace(/^["']|["']$/g, ""))
+      .map((id) => id.trim().replace(/^["']|["']$/g, ""))
       .filter(Boolean)
   )
 
-  if (guildIds.size === 0) {
+  if (ids.size === 0) {
+    throw new Error(`${name} must include at least one ${label} ID.`)
+  }
+
+  const invalidIds = [...ids].filter((id) => !/^\d{17,20}$/.test(id))
+
+  if (invalidIds.length > 0) {
     throw new Error(
-      "DISCORD_ALLOWED_GUILD_IDS must include at least one guild ID."
+      `${name} contains invalid ${label} IDs: ${invalidIds.join(", ")}`
     )
   }
 
-  const invalidGuildIds = [...guildIds].filter(
-    (guildId) => !/^\d{17,20}$/.test(guildId)
-  )
-
-  if (invalidGuildIds.length > 0) {
-    throw new Error(
-      `DISCORD_ALLOWED_GUILD_IDS contains invalid guild IDs: ${invalidGuildIds.join(", ")}`
-    )
-  }
-
-  return guildIds
+  return ids
 }
 
 async function stopDiscordBot(client: Client) {
@@ -77,8 +73,15 @@ export async function startDiscordBot() {
     "DISCORD_APPLICATION_ID",
     serverEnv.DISCORD_APPLICATION_ID
   )
-  const allowedGuildIds = parseAllowedGuildIds(
-    serverEnv.DISCORD_ALLOWED_GUILD_IDS
+  const allowedGuildIds = parseAllowedDiscordIds(
+    "DISCORD_ALLOWED_GUILD_IDS",
+    serverEnv.DISCORD_ALLOWED_GUILD_IDS,
+    "guild"
+  )
+  const allowedChannelIds = parseAllowedDiscordIds(
+    "DISCORD_ALLOWED_CHANNEL_IDS",
+    serverEnv.DISCORD_ALLOWED_CHANNEL_IDS,
+    "channel"
   )
   const client = new Client({
     intents: [
@@ -88,7 +91,7 @@ export async function startDiscordBot() {
     ],
   })
 
-  registerDiscordHandlers(client, { allowedGuildIds })
+  registerDiscordHandlers(client, { allowedChannelIds, allowedGuildIds })
   registerShutdownHandlers(client)
 
   client.once(Events.ClientReady, async (readyClient) => {
@@ -99,28 +102,29 @@ export async function startDiscordBot() {
       const joinedGuildIds = [...readyClient.guilds.cache.keys()]
 
       console.log("[Discord] Startup context", {
+        allowedChannelIds: [...allowedChannelIds],
         allowedGuildIds: [...allowedGuildIds],
         applicationId,
         connectedApplicationId: connectedApplication.id,
         joinedGuildIds,
       })
 
-      const syncResults = await syncGuildCommands({
+      const commandResults = await clearGuildCommands({
         applicationId,
         guildIds: allowedGuildIds,
         token,
       })
-      const failedResults = syncResults.filter((result) => !result.ok)
+      const failedResults = commandResults.filter((result) => !result.ok)
 
-      for (const result of syncResults) {
+      for (const result of commandResults) {
         if (result.ok) {
-          console.log("[Discord] Synced guild command", {
+          console.log("[Discord] Cleared guild commands", {
             guildId: result.guildId,
           })
           continue
         }
 
-        console.error("[Discord] Failed to sync guild command", {
+        console.error("[Discord] Failed to clear guild commands", {
           guildId: result.guildId,
           error: result.error,
           botInGuild: readyClient.guilds.cache.has(result.guildId),
@@ -135,15 +139,15 @@ export async function startDiscordBot() {
 
       if (failedResults.length > 0) {
         throw new Error(
-          `Failed to sync commands for ${failedResults.length} guild(s).`
+          `Failed to clear commands for ${failedResults.length} guild(s).`
         )
       }
 
       console.log(
-        `[Discord] Synced guild commands for ${allowedGuildIds.size} guild(s).`
+        `[Discord] Cleared guild commands for ${allowedGuildIds.size} guild(s).`
       )
     } catch (error) {
-      console.error("[Discord] Failed to sync guild commands", {
+      console.error("[Discord] Failed to clear guild commands", {
         error: error instanceof Error ? error.message : String(error),
       })
       await stopDiscordBot(client)

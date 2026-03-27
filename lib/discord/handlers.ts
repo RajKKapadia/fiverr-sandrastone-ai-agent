@@ -1,10 +1,7 @@
 import { run, InputGuardrailTripwireTriggered } from "@openai/agents"
 import {
   PermissionFlagsBits,
-  MessageFlags,
-  type ChatInputCommandInteraction,
   type Client,
-  type InteractionEditReplyOptions,
   type MessageCreateOptions,
   type Message,
 } from "discord.js"
@@ -13,19 +10,15 @@ import { primaryAgent } from "@/lib/agent"
 import { generateOutOfScopeResponse } from "@/lib/agent/out-of-scope"
 import type { UserContext } from "@/lib/types"
 
-import {
-  ASK_COMMAND_NAME,
-  ASK_COMMAND_QUERY_OPTION_NAME,
-} from "./commands"
-
 const AGENT_TIMEOUT_MS = 30_000
 const DISCORD_MESSAGE_LIMIT = 2_000
-const MAX_QUERY_LENGTH = 500
+const MAX_QUERY_LENGTH = DISCORD_MESSAGE_LIMIT
 const REQUEST_COOLDOWN_MS = 10_000
 const inFlightRequests = new Set<string>()
 const lastRequestAtByUser = new Map<string, number>()
 
 type DiscordHandlerOptions = {
+  allowedChannelIds: Set<string>
   allowedGuildIds: Set<string>
 }
 
@@ -64,44 +57,19 @@ function buildMessageOptions(content: string): MessageCreateOptions {
   }
 }
 
-function buildInteractionReplyOptions(
-  content: string
-): InteractionEditReplyOptions {
-  return {
-    allowedMentions: {
-      parse: [],
-    },
-    content,
-  }
-}
-
 function isAllowedGuild(guildId: string | null, allowedGuildIds: Set<string>) {
   return Boolean(guildId && allowedGuildIds.has(guildId))
 }
 
-function normalizeQuery(value: string) {
-  return value.trim().replace(/^[,:-]+\s*/, "")
+function isAllowedChannel(
+  channelId: string | null,
+  allowedChannelIds: Set<string>
+) {
+  return Boolean(channelId && allowedChannelIds.has(channelId))
 }
 
-function extractMentionQuery(message: Message, botUserId: string) {
-  if (!message.mentions.users.has(botUserId)) {
-    return null
-  }
-
-  const content = message.content.trim()
-
-  if (!content) {
-    return ""
-  }
-
-  const leadingMentionPattern = new RegExp(`^\\s*<@!?${botUserId}>(?:\\s|$)`)
-
-  if (leadingMentionPattern.test(content)) {
-    return normalizeQuery(content.replace(leadingMentionPattern, " "))
-  }
-
-  const inlineMentionPattern = new RegExp(`<@!?${botUserId}>`, "g")
-  return normalizeQuery(content.replace(inlineMentionPattern, " "))
+function normalizeQuery(value: string) {
+  return value.trim()
 }
 
 function getRequestKey(guildId: string, userId: string) {
@@ -154,10 +122,6 @@ function getDiscordUsername(message: Message) {
   )
 }
 
-function getInteractionUsername(interaction: ChatInputCommandInteraction) {
-  return interaction.user.globalName || interaction.user.username
-}
-
 function isTimeoutError(error: unknown) {
   return (
     error instanceof Error &&
@@ -205,27 +169,21 @@ function getMissingChannelPermissions(message: Message) {
   return missingPermissions
 }
 
-async function sendMentionResponse(message: Message, content: string) {
-  const options = buildMessageOptions(content)
-
+async function sendDiscordResponse(message: Message, content: string) {
   try {
-    await message.reply(options)
+    await message.reply(buildMessageOptions(content))
     return
   } catch (error) {
-    console.warn("[Discord] Inline reply failed, falling back to channel send", {
+    console.warn("[Discord] Direct reply failed", {
       channelId: message.channelId,
       error: error instanceof Error ? error.message : String(error),
       guildId: message.guildId,
       missingPermissions: getMissingChannelPermissions(message),
       userId: message.author.id,
     })
-  }
 
-  if (!message.channel.isSendable()) {
-    throw new Error("Discord channel is not sendable.")
+    throw error
   }
-
-  await message.channel.send(options)
 }
 
 async function runDiscordAsk(input: {
@@ -235,7 +193,7 @@ async function runDiscordAsk(input: {
   const query = normalizeQuery(input.query)
 
   if (!query) {
-    return "Mention me with a question, for example `@bot find the refund policy`."
+    return "Please send a non-empty question."
   }
 
   if (query.length > MAX_QUERY_LENGTH) {
@@ -265,8 +223,15 @@ async function runDiscordAsk(input: {
   }
 }
 
-async function handleMentionRequest(message: Message, options: DiscordHandlerOptions) {
-  if (!message.inGuild() || !isAllowedGuild(message.guildId, options.allowedGuildIds)) {
+async function handleChannelMessage(
+  message: Message,
+  options: DiscordHandlerOptions
+) {
+  if (
+    !message.inGuild() ||
+    !isAllowedGuild(message.guildId, options.allowedGuildIds) ||
+    !isAllowedChannel(message.channelId, options.allowedChannelIds)
+  ) {
     return
   }
 
@@ -274,15 +239,9 @@ async function handleMentionRequest(message: Message, options: DiscordHandlerOpt
     return
   }
 
-  const botUserId = message.client.user?.id
+  const query = message.content.trim()
 
-  if (!botUserId) {
-    return
-  }
-
-  const query = extractMentionQuery(message, botUserId)
-
-  if (query === null) {
+  if (!query) {
     return
   }
 
@@ -290,7 +249,7 @@ async function handleMentionRequest(message: Message, options: DiscordHandlerOpt
   const cooldownMessage = getCooldownMessage(requestKey)
 
   if (cooldownMessage) {
-    await sendMentionResponse(message, cooldownMessage)
+    await sendDiscordResponse(message, cooldownMessage)
     return
   }
 
@@ -305,9 +264,9 @@ async function handleMentionRequest(message: Message, options: DiscordHandlerOpt
       }),
     })
 
-    await sendMentionResponse(message, response)
+    await sendDiscordResponse(message, response)
   } catch (error) {
-    console.error("[Discord] Mention request failed", {
+    console.error("[Discord] Message request failed", {
       channelId: message.channelId,
       error: error instanceof Error ? error.message : String(error),
       guildId: message.guildId,
@@ -319,88 +278,7 @@ async function handleMentionRequest(message: Message, options: DiscordHandlerOpt
       ? "That request timed out. Please try again."
       : "Something went wrong while processing that request."
 
-    await sendMentionResponse(message, failureMessage).catch(() => undefined)
-  } finally {
-    endRequest(requestKey)
-  }
-}
-
-async function handleAskInteraction(
-  interaction: ChatInputCommandInteraction,
-  options: DiscordHandlerOptions
-) {
-  if (!interaction.inCachedGuild()) {
-    if (!interaction.deferred && !interaction.replied) {
-      await interaction.reply({
-        content: "This command can only be used in allowed server channels.",
-        flags: MessageFlags.Ephemeral,
-      })
-    }
-    return
-  }
-
-  if (!isAllowedGuild(interaction.guildId, options.allowedGuildIds)) {
-    if (!interaction.deferred && !interaction.replied) {
-      await interaction.reply({
-        content: "This command is not available in this server.",
-        flags: MessageFlags.Ephemeral,
-      })
-    }
-    return
-  }
-
-  const requestKey = getRequestKey(interaction.guildId, interaction.user.id)
-  const cooldownMessage = getCooldownMessage(requestKey)
-
-  if (cooldownMessage) {
-    await interaction.reply({
-      content: cooldownMessage,
-      flags: MessageFlags.Ephemeral,
-    })
-    return
-  }
-
-  beginRequest(requestKey)
-
-  try {
-    await interaction.deferReply({
-      flags: MessageFlags.Ephemeral,
-    })
-
-    const query =
-      interaction.options.getString(ASK_COMMAND_QUERY_OPTION_NAME, true) || ""
-    const response = await runDiscordAsk({
-      query,
-      userContext: buildUserContext({
-        userId: interaction.user.id,
-        username: getInteractionUsername(interaction),
-      }),
-    })
-
-    await interaction.editReply(buildInteractionReplyOptions(response))
-  } catch (error) {
-    console.error("[Discord] Slash request failed", {
-      error: error instanceof Error ? error.message : String(error),
-      guildId: interaction.guildId,
-      userId: interaction.user.id,
-    })
-
-    const failureMessage = isTimeoutError(error)
-      ? "That request timed out. Please try again."
-      : "Something went wrong while processing that request."
-
-    if (interaction.deferred || interaction.replied) {
-      await interaction
-        .editReply(buildInteractionReplyOptions(failureMessage))
-        .catch(() => undefined)
-    } else {
-      await interaction
-        .reply({
-          content: failureMessage,
-          flags: MessageFlags.Ephemeral,
-        })
-        .catch(() => undefined)
-    }
+    await sendDiscordResponse(message, failureMessage).catch(() => undefined)
   } finally {
     endRequest(requestKey)
   }
@@ -411,18 +289,6 @@ export function registerDiscordHandlers(
   options: DiscordHandlerOptions
 ) {
   client.on("messageCreate", (message) => {
-    void handleMentionRequest(message, options)
-  })
-
-  client.on("interactionCreate", (interaction) => {
-    if (!interaction.isChatInputCommand()) {
-      return
-    }
-
-    if (interaction.commandName !== ASK_COMMAND_NAME) {
-      return
-    }
-
-    void handleAskInteraction(interaction, options)
+    void handleChannelMessage(message, options)
   })
 }
