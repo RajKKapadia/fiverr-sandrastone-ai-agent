@@ -7,7 +7,7 @@ import { openai } from "@/lib/openai/client"
 const DEFAULT_MAX_RESULTS = 3
 const MAX_MAX_RESULTS = 5
 const MAX_EXCERPT_LENGTH = 900
-const MIN_VECTOR_SEARCH_SCORE = 0.9
+const MIN_VECTOR_SEARCH_SCORE = 0.50
 const TIMESTAMP_PATTERN = /\[start time:\s*([0-9]{2}(?::[0-9]{2}){1,2})\]/i
 
 type VectorStoreSearchPage = Awaited<
