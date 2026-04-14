@@ -21,7 +21,7 @@ COPY . .
 
 RUN NEXT_TELEMETRY_DISABLED=1 pnpm build
 
-FROM base AS runner
+FROM base AS web
 
 ENV NODE_ENV=production
 ENV HOSTNAME=0.0.0.0
@@ -37,3 +37,17 @@ COPY --from=builder /app/.next/static ./.next/static
 EXPOSE 4100
 
 CMD ["node", "server.js"]
+
+FROM base AS discord
+
+ENV NODE_ENV=production
+
+WORKDIR /app
+
+COPY --from=deps /app/node_modules ./node_modules
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.json ./
+COPY data ./data
+COPY drizzle ./drizzle
+COPY lib ./lib
+
+CMD ["pnpm", "discord:start"]

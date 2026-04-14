@@ -101,13 +101,32 @@ The request uses the same bearer token as `/api/widget/history` and
 
 ## Docker
 
-Build and run the app in Docker on port `4100`:
+Build and run only the web app on port `4100`:
 
 ```bash
-docker build -t admin-dashboard .
-docker run --env-file .env -p 4100:4100 admin-dashboard
+docker build --target web -t admin-dashboard-web .
+docker run --env-file .env -p 4100:4100 admin-dashboard-web
 ```
 
-The container expects the same runtime environment variables as the local app,
-including `OPENAI_API_KEY`, `OPENAI_VECTOR_STORE_ID`, `DATABASE_URL`,
-`ADMIN_EMAIL`, and `ADMIN_PASSWORD`.
+Run the Discord bot as its own container:
+
+```bash
+docker build --target discord -t admin-dashboard-discord .
+docker run --env-file .env admin-dashboard-discord
+```
+
+Run both services together with Docker Compose:
+
+```bash
+docker compose up --build -d
+```
+
+This starts:
+
+- `web` on port `4100`
+- `discord` as a background bot worker
+
+Both services use the same `.env` file. The containers expect the same runtime
+environment variables as the local app, including `OPENAI_API_KEY`,
+`OPENAI_VECTOR_STORE_ID`, `DATABASE_URL`, `ADMIN_EMAIL`, `ADMIN_PASSWORD`, and
+the Discord bot variables.
