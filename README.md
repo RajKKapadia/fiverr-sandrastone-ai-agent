@@ -60,3 +60,54 @@ const unsubscribe = window.SandraStoneWidget.on("ready", () => {})
 ```
 
 Supported events: `ready`, `open`, `close`, `message_sent`, `error`.
+
+## Non-Streaming Widget Chat API
+
+Use `POST /api/widget/chat` to send the current query together with prior chat
+history and receive a single assistant reply.
+
+Request body:
+
+```json
+{
+  "message": "What does Sandra say about broker application secrets?",
+  "history": [
+    {
+      "role": "user",
+      "content": "Hi"
+    },
+    {
+      "role": "assistant",
+      "content": "Hello, how can I help?"
+    }
+  ]
+}
+```
+
+Response body:
+
+```json
+{
+  "message": {
+    "id": "generated-message-id",
+    "role": "assistant",
+    "content": "..."
+  }
+}
+```
+
+The request uses the same bearer token as `/api/widget/history` and
+`/api/widget/chat/stream`.
+
+## Docker
+
+Build and run the app in Docker on port `4100`:
+
+```bash
+docker build -t admin-dashboard .
+docker run --env-file .env -p 4100:4100 admin-dashboard
+```
+
+The container expects the same runtime environment variables as the local app,
+including `OPENAI_API_KEY`, `OPENAI_VECTOR_STORE_ID`, `DATABASE_URL`,
+`ADMIN_EMAIL`, and `ADMIN_PASSWORD`.

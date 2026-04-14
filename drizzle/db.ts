@@ -1,22 +1,42 @@
-import { drizzle } from 'drizzle-orm/postgres-js';
-import postgres from 'postgres';
+import { drizzle } from "drizzle-orm/postgres-js"
+import postgres from "postgres"
 
-import { serverEnv } from '@/data/env/server';
-import * as schema from '@/drizzle/schema';
+import { serverEnv } from "@/data/env/server"
+import * as schema from "@/drizzle/schema"
 
-const client = postgres(serverEnv.DATABASE_URL, { max: 1 });
+let client: ReturnType<typeof postgres> | null = null
+let dbInstance: ReturnType<typeof drizzle<typeof schema>> | null = null
 
-export const db = drizzle(client, { logger: serverEnv.NODE_ENV === 'development' ? true : false, schema });
+function getClient() {
+  if (!client) {
+    client = postgres(serverEnv.DATABASE_URL, { max: 1 })
+  }
+
+  return client
+}
+
+export function getDb() {
+  if (!dbInstance) {
+    dbInstance = drizzle(getClient(), {
+      logger: serverEnv.NODE_ENV === "development" ? true : false,
+      schema,
+    })
+  }
+
+  return dbInstance
+}
 
 export async function checkDatabaseHealth(): Promise<boolean> {
-    try {
-        await client`select 1`;
-        return true;
-    } catch {
-        return false;
-    }
+  try {
+    await getClient()`select 1`
+    return true
+  } catch {
+    return false
+  }
 }
 
 export async function closeDatabase(): Promise<void> {
-    await client.end();
+  if (client) {
+    await client.end()
+  }
 }

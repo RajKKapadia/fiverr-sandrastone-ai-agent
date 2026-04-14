@@ -1,6 +1,6 @@
 import type { AgentInputItem } from "@openai/agents"
 
-import type { WidgetMessage } from "./types"
+import type { WidgetChatHistoryEntry, WidgetMessage } from "./types"
 
 function isMessageLikeItem(item: AgentInputItem): item is AgentInputItem & {
   content: unknown
@@ -73,7 +73,42 @@ function extractMessageText(content: unknown) {
   return ""
 }
 
-export function mapAgentItemsToWidgetMessages(items: AgentInputItem[]): WidgetMessage[] {
+export function mapWidgetMessagesToAgentItems(
+  messages: WidgetChatHistoryEntry[]
+): AgentInputItem[] {
+  return messages.reduce<AgentInputItem[]>((items, message) => {
+    const content = message.content.trim()
+
+    if (!content) {
+      return items
+    }
+
+    if (message.role === "user") {
+      items.push({
+        content,
+        role: "user",
+      } satisfies AgentInputItem)
+      return items
+    }
+
+    items.push({
+      content: [
+        {
+          text: content,
+          type: "output_text",
+        },
+      ],
+      role: "assistant",
+      status: "completed",
+    } satisfies AgentInputItem)
+
+    return items
+  }, [])
+}
+
+export function mapAgentItemsToWidgetMessages(
+  items: AgentInputItem[]
+): WidgetMessage[] {
   return items.flatMap((item, index) => {
     if (!isMessageLikeItem(item)) {
       return []
@@ -92,7 +127,10 @@ export function mapAgentItemsToWidgetMessages(items: AgentInputItem[]): WidgetMe
     return [
       {
         content,
-        id: typeof item.id === "string" && item.id ? item.id : `message-${index + 1}`,
+        id:
+          typeof item.id === "string" && item.id
+            ? item.id
+            : `message-${index + 1}`,
         role: item.role,
       },
     ]

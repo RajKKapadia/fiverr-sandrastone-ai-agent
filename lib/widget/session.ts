@@ -3,7 +3,7 @@ import "server-only"
 import type { AgentInputItem, Session } from "@openai/agents"
 import { and, asc, desc, eq, sql } from "drizzle-orm"
 
-import { db } from "@/drizzle/db"
+import { getDb } from "@/drizzle/db"
 import { sessionItems, sessions } from "@/drizzle/schema"
 
 type SessionIdentifier = {
@@ -24,6 +24,8 @@ export class DatabaseSessionStore implements Session {
   constructor(private readonly userId: string) {}
 
   private async ensureSession(): Promise<SessionIdentifier> {
+    const db = getDb()
+
     if (this.cachedSessionId) {
       return { sessionId: this.cachedSessionId }
     }
@@ -72,6 +74,7 @@ export class DatabaseSessionStore implements Session {
   }
 
   async getItems(limit?: number) {
+    const db = getDb()
     const sessionId = await this.getSessionId()
 
     const rows =
@@ -104,11 +107,14 @@ export class DatabaseSessionStore implements Session {
       return
     }
 
+    const db = getDb()
     const sessionId = await this.getSessionId()
     const [sequenceRow] = await db
       .select({
         maxSequence:
-          sql<number>`coalesce(max(${sessionItems.sequence}), 0)`.mapWith(Number),
+          sql<number>`coalesce(max(${sessionItems.sequence}), 0)`.mapWith(
+            Number
+          ),
       })
       .from(sessionItems)
       .where(eq(sessionItems.sessionId, sessionId))
@@ -130,6 +136,7 @@ export class DatabaseSessionStore implements Session {
   }
 
   async popItem() {
+    const db = getDb()
     const sessionId = await this.getSessionId()
     const rows = await db
       .select({
@@ -150,13 +157,17 @@ export class DatabaseSessionStore implements Session {
     await db
       .delete(sessionItems)
       .where(
-        and(eq(sessionItems.id, match.id), eq(sessionItems.sessionId, sessionId))
+        and(
+          eq(sessionItems.id, match.id),
+          eq(sessionItems.sessionId, sessionId)
+        )
       )
 
     return asAgentInputItem(match.itemData) ?? undefined
   }
 
   async clearSession() {
+    const db = getDb()
     const sessionId = await this.getSessionId()
 
     await db.delete(sessionItems).where(eq(sessionItems.sessionId, sessionId))
