@@ -66,6 +66,10 @@ Supported events: `ready`, `open`, `close`, `message_sent`, `error`.
 Use `POST /api/widget/chat` to send the current query together with prior chat
 history and receive a single assistant reply.
 
+Requests are accepted only from browser origins listed in
+`WIDGET_SITE_CONFIGS`. The route now handles CORS preflight with `OPTIONS` and
+does not require an `Authorization` bearer token.
+
 Request body:
 
 ```json
@@ -96,8 +100,8 @@ Response body:
 }
 ```
 
-The request uses the same bearer token as `/api/widget/history` and
-`/api/widget/chat/stream`.
+Browser clients must send the request from an allowed `Origin` with
+`Content-Type: application/json`.
 
 ## Docker
 

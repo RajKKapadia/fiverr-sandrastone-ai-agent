@@ -1,14 +1,12 @@
+import { createHash } from "node:crypto"
+
 import { InputGuardrailTripwireTriggered, run } from "@openai/agents"
 import { z } from "zod"
 
 import { primaryAgent } from "@/lib/agent"
 import { generateOutOfScopeResponse } from "@/lib/agent/out-of-scope"
 import type { UserContext } from "@/lib/types"
-import {
-  getBearerToken,
-  getWidgetUserId,
-  verifyWidgetSessionToken,
-} from "@/lib/widget/auth"
+import { isKnownWidgetOrigin } from "@/lib/widget/config"
 import { mapWidgetMessagesToAgentItems } from "@/lib/widget/messages"
 import {
   beginWidgetRequest,
@@ -74,18 +72,87 @@ async function getErrorMessage(
   return "Something went wrong while processing that request."
 }
 
-function jsonError(message: string, status: number) {
+function normalizeOrigin(origin: string) {
+  return new URL(origin).origin
+}
+
+function getOrigin(request: Request) {
+  const origin = request.headers.get("origin")?.trim()
+
+  if (!origin) {
+    return null
+  }
+
+  try {
+    return normalizeOrigin(origin)
+  } catch {
+    return null
+  }
+}
+
+function buildCorsHeaders(origin: string) {
+  return {
+    "Access-Control-Allow-Headers": "Content-Type",
+    "Access-Control-Allow-Methods": "OPTIONS, POST",
+    "Access-Control-Allow-Origin": origin,
+    "Cache-Control": "no-store",
+    Vary: "Origin",
+  }
+}
+
+function jsonResponseWithCors(
+  body: Record<string, unknown>,
+  origin: string,
+  status = 200
+) {
+  return Response.json(body, {
+    headers: buildCorsHeaders(origin),
+    status,
+  })
+}
+
+function jsonError(message: string, status: number, origin?: string) {
   return Response.json(
     {
       error: message,
     },
     {
-      headers: {
-        "Cache-Control": "no-store",
-      },
+      headers: origin
+        ? buildCorsHeaders(origin)
+        : {
+            "Cache-Control": "no-store",
+          },
       status,
     }
   )
+}
+
+function getClientAddress(request: Request) {
+  const forwardedFor = request.headers.get("x-forwarded-for")?.trim()
+
+  if (forwardedFor) {
+    const firstAddress = forwardedFor.split(",")[0]?.trim()
+
+    if (firstAddress) {
+      return firstAddress
+    }
+  }
+
+  return (
+    request.headers.get("cf-connecting-ip")?.trim() ||
+    request.headers.get("x-real-ip")?.trim() ||
+    null
+  )
+}
+
+function getWidgetRequestUserId(request: Request, origin: string) {
+  const clientAddress = getClientAddress(request) ?? "unknown-address"
+  const userAgent = request.headers.get("user-agent")?.trim() ?? "unknown-agent"
+  const requestKey = createHash("sha256")
+    .update(`${origin}\n${clientAddress}\n${userAgent}`)
+    .digest("hex")
+
+  return `website:${requestKey}`
 }
 
 function normalizeHistory(body: WidgetChatRequest) {
@@ -114,40 +181,48 @@ async function synchronizeSessionWithHistory(
   }
 }
 
-export async function POST(request: Request) {
-  const token = getBearerToken(request)
+export async function OPTIONS(request: Request) {
+  const origin = getOrigin(request)
 
-  if (!token) {
-    return jsonError("Missing widget authorization.", 401)
+  if (!origin || !isKnownWidgetOrigin(origin)) {
+    return new Response(null, {
+      status: 403,
+    })
   }
 
-  let claims
+  return new Response(null, {
+    headers: buildCorsHeaders(origin),
+    status: 204,
+  })
+}
 
-  try {
-    claims = verifyWidgetSessionToken(token)
-  } catch (error) {
-    return jsonError(
-      error instanceof Error ? error.message : "Invalid widget authorization.",
-      401
-    )
+export async function POST(request: Request) {
+  const origin = getOrigin(request)
+
+  if (!origin) {
+    return jsonError("Missing request origin.", 400)
+  }
+
+  if (!isKnownWidgetOrigin(origin)) {
+    return jsonError("This website is not allowed to use the widget chat API.", 403)
   }
 
   const rawBody = await request.json().catch(() => null)
   const parsed = widgetChatRequestSchema.safeParse(rawBody)
 
   if (!parsed.success) {
-    return jsonError("Invalid widget chat payload.", 400)
+    return jsonError("Invalid widget chat payload.", 400, origin)
   }
 
   const body: WidgetChatRequest = {
     ...parsed.data,
     history: normalizeHistory(parsed.data),
   }
-  const userId = getWidgetUserId(claims)
+  const userId = getWidgetRequestUserId(request, origin)
   const requestBlockReason = getWidgetRequestBlockReason(userId)
 
   if (requestBlockReason) {
-    return jsonError(requestBlockReason, 429)
+    return jsonError(requestBlockReason, 429, origin)
   }
 
   beginWidgetRequest(userId)
@@ -170,7 +245,7 @@ export async function POST(request: Request) {
         ? result.finalOutput.trim()
         : "I could not generate a response for that request."
 
-    return Response.json(
+    return jsonResponseWithCors(
       {
         message: {
           content: finalOutput,
@@ -178,21 +253,17 @@ export async function POST(request: Request) {
           role: "assistant",
         } satisfies WidgetMessage,
       } satisfies WidgetChatResponse,
-      {
-        headers: {
-          "Cache-Control": "no-store",
-        },
-      }
+      origin
     )
   } catch (error) {
     console.error("[Widget] Chat request failed", {
       error: error instanceof Error ? error.message : String(error),
-      siteKey: claims.siteKey,
+      origin,
       userId,
     })
 
     if (error instanceof InputGuardrailTripwireTriggered) {
-      return Response.json(
+      return jsonResponseWithCors(
         {
           message: {
             content: await getErrorMessage(error, {
@@ -203,11 +274,7 @@ export async function POST(request: Request) {
             role: "assistant",
           } satisfies WidgetMessage,
         } satisfies WidgetChatResponse,
-        {
-          headers: {
-            "Cache-Control": "no-store",
-          },
-        }
+        origin
       )
     }
 
@@ -216,7 +283,8 @@ export async function POST(request: Request) {
         message: body.message,
         userContext,
       }),
-      500
+      500,
+      origin
     )
   } finally {
     endWidgetRequest(userId)
