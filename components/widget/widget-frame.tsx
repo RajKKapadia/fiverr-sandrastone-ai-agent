@@ -6,17 +6,11 @@ import {
   SpinnerGap,
   X,
 } from "@phosphor-icons/react"
-import {
-  startTransition,
-  useEffect,
-  useEffectEvent,
-  useRef,
-  useState,
-} from "react"
+import { useEffect, useEffectEvent, useRef, useState } from "react"
 
 import { Button } from "@/components/ui/button"
 import type {
-  WidgetHistoryResponse,
+  WidgetChatHistoryEntry,
   WidgetHostCommand,
   WidgetInitMessage,
   WidgetMessage,
@@ -60,6 +54,13 @@ function createMessage(role: WidgetMessage["role"], content: string): WidgetMess
 
 function getEventErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : "Something went wrong."
+}
+
+function getHistoryEntries(messages: WidgetMessage[]): WidgetChatHistoryEntry[] {
+  return messages.map(({ content, role }) => ({
+    content,
+    role,
+  }))
 }
 
 async function readEventStream(
@@ -140,7 +141,6 @@ function isWidgetHostCommand(value: unknown): value is WidgetHostCommand {
 export function WidgetFrame({ siteKey }: WidgetFrameProps) {
   const [error, setError] = useState<string | null>(null)
   const [inputValue, setInputValue] = useState("")
-  const [isHistoryLoading, setIsHistoryLoading] = useState(false)
   const [isOpen, setIsOpen] = useState(false)
   const [isStreaming, setIsStreaming] = useState(false)
   const [messages, setMessages] = useState<WidgetMessage[]>([])
@@ -153,6 +153,7 @@ export function WidgetFrame({ siteKey }: WidgetFrameProps) {
   const expectedParentOriginRef = useRef<string | null>(null)
   const inputValueRef = useRef(inputValue)
   const isStreamingRef = useRef(isStreaming)
+  const messagesRef = useRef(messages)
   const messagesViewportRef = useRef<HTMLDivElement | null>(null)
   const tokenRef = useRef(token)
 
@@ -174,41 +175,6 @@ export function WidgetFrame({ siteKey }: WidgetFrameProps) {
     })
   }
 
-  const loadHistory = useEffectEvent(async (nextToken: string) => {
-    setIsHistoryLoading(true)
-    setError(null)
-
-    try {
-      const response = await fetch("/api/widget/history", {
-        headers: {
-          Authorization: `Bearer ${nextToken}`,
-        },
-      })
-      const payload = await response.json().catch(() => null)
-
-      if (!response.ok || !payload) {
-        throw new Error(
-          payload && typeof payload.error === "string"
-            ? payload.error
-            : "Failed to load chat history."
-        )
-      }
-
-      startTransition(() => {
-        setMessages((payload as WidgetHistoryResponse).messages)
-      })
-      emitNamedEvent("ready")
-    } catch (historyError) {
-      const message = getEventErrorMessage(historyError)
-      setError(message)
-      emitNamedEvent("error", {
-        message,
-      })
-    } finally {
-      setIsHistoryLoading(false)
-    }
-  })
-
   async function submitMessage(sourceText?: string) {
     const nextToken = tokenRef.current
     const text = (sourceText ?? inputValueRef.current).trim()
@@ -221,6 +187,7 @@ export function WidgetFrame({ siteKey }: WidgetFrameProps) {
     setInputValue("")
     setIsOpen(true)
 
+    const history = getHistoryEntries(messagesRef.current)
     const userMessage = createMessage("user", text)
     const assistantMessage = createMessage("assistant", "")
 
@@ -237,6 +204,7 @@ export function WidgetFrame({ siteKey }: WidgetFrameProps) {
     try {
       const response = await fetch("/api/widget/chat/stream", {
         body: JSON.stringify({
+          history,
           message: text,
         }),
         headers: {
@@ -330,7 +298,9 @@ export function WidgetFrame({ siteKey }: WidgetFrameProps) {
         message,
       })
       setMessages((currentMessages) =>
-        currentMessages.filter((messageItem) => messageItem.id !== assistantMessage.id)
+        currentMessages.filter(
+          (messageItem) => messageItem.id !== assistantMessage.id
+        )
       )
     } finally {
       setIsStreaming(false)
@@ -346,9 +316,10 @@ export function WidgetFrame({ siteKey }: WidgetFrameProps) {
 
     if (isWidgetInitMessage(payload)) {
       expectedParentOriginRef.current = event.origin
+      setError(null)
       setToken(payload.token)
       setSite(payload.site)
-      void loadHistory(payload.token)
+      emitNamedEvent("ready")
       return
     }
 
@@ -387,6 +358,10 @@ export function WidgetFrame({ siteKey }: WidgetFrameProps) {
   useEffect(() => {
     isStreamingRef.current = isStreaming
   }, [isStreaming])
+
+  useEffect(() => {
+    messagesRef.current = messages
+  }, [messages])
 
   useEffect(() => {
     window.addEventListener("message", handleWindowMessage)
@@ -458,13 +433,7 @@ export function WidgetFrame({ siteKey }: WidgetFrameProps) {
             ref={messagesViewportRef}
             className="flex-1 space-y-4 overflow-y-auto px-3 py-4 sm:px-4"
           >
-            {isHistoryLoading ? (
-              <div className="rounded-[1.75rem] border border-dashed border-[#d7c4ae] bg-white/55 p-5 text-sm text-slate-600">
-                Loading chat history...
-              </div>
-            ) : null}
-
-            {!isHistoryLoading && messages.length === 0 ? (
+            {messages.length === 0 ? (
               <div className="rounded-[1.75rem] border border-[#dfccb6] bg-white/80 p-5 shadow-sm">
                 <p className="text-sm font-medium uppercase tracking-[0.22em] text-[#8d6b52]">
                   Start Here
@@ -518,50 +487,51 @@ export function WidgetFrame({ siteKey }: WidgetFrameProps) {
                 value={inputValue}
                 onChange={(event) => setInputValue(event.target.value)}
                 onKeyDown={(event) => {
-                  if (event.key === "Enter" && !event.shiftKey) {
-                    event.preventDefault()
-                    void submitMessage()
+                  if (event.key !== "Enter" || event.shiftKey) {
+                    return
                   }
+
+                  event.preventDefault()
+                  void submitMessage()
                 }}
                 placeholder={site.placeholder}
                 rows={1}
-                className="min-h-[64px] w-full resize-none border-0 bg-transparent px-3 py-3 text-[0.97rem] leading-7 text-slate-900 outline-none placeholder:text-slate-400 sm:min-h-[72px]"
+                className="max-h-40 min-h-12 w-full resize-none border-0 bg-transparent px-3 py-2 text-[0.96rem] leading-7 text-slate-900 outline-none placeholder:text-slate-400"
               />
 
-              <div className="flex flex-col gap-3 px-2 pb-2 sm:flex-row sm:items-center sm:justify-between">
-                <p className="text-center text-[11px] font-medium uppercase tracking-[0.16em] text-[#8d6b52] sm:text-left sm:text-xs sm:tracking-[0.18em]">
-                  Source links included
-                </p>
+              <div className="flex items-center justify-between gap-3 px-2 pb-1 pt-2">
+                <div className="flex items-center gap-2 text-[0.72rem] uppercase tracking-[0.18em] text-[#8d6b52]">
+                  <ChatCircleDots className="size-4" />
+                  Knowledge-guided answers
+                </div>
+
                 <Button
                   type="button"
-                  variant="dark"
-                  size="lg"
-                  className="h-11 w-full justify-center rounded-full px-4 shadow-[0_14px_34px_rgba(15,23,42,0.18)] sm:w-auto"
-                  disabled={!token || !inputValue.trim() || isStreaming}
+                  className="rounded-full bg-slate-950 px-4 text-white hover:bg-slate-800"
                   onClick={() => void submitMessage()}
+                  disabled={!inputValue.trim() || isStreaming}
                 >
                   {isStreaming ? (
                     <SpinnerGap className="size-4 animate-spin" />
                   ) : (
-                    <PaperPlaneTilt className="size-4" />
+                    <PaperPlaneTilt className="size-4" weight="fill" />
                   )}
-                  Send
                 </Button>
               </div>
             </div>
           </footer>
         </section>
       ) : (
-        <button
+        <Button
           type="button"
           onClick={() => setIsOpen(true)}
-          className="group flex h-[84px] w-[84px] items-center justify-center rounded-full border border-[#d8c2ac] bg-[radial-gradient(circle_at_top,_#fff7ed,_#f4dcc5_62%,_#e7b888_100%)] text-slate-950 shadow-[0_18px_55px_rgba(15,23,42,0.22)] transition hover:scale-[1.02]"
+          className="mb-3 mr-3 flex size-20 rounded-full border border-[#8b5e3b] bg-[radial-gradient(circle_at_30%_30%,#f7d08a_0%,#d98f3f_45%,#7a431e_100%)] p-0 shadow-[0_18px_45px_rgba(122,67,30,0.35)] transition hover:scale-[1.01] hover:shadow-[0_22px_55px_rgba(122,67,30,0.45)] sm:mb-4 sm:mr-4"
         >
-          <span className="sr-only">Open SandraStone chat widget</span>
-          <div className="flex h-[68px] w-[68px] items-center justify-center rounded-full bg-slate-950 text-white shadow-inner transition group-hover:bg-slate-800">
-            <ChatCircleDots className="size-8" />
-          </div>
-        </button>
+          <span className="sr-only">Open chat widget</span>
+          <span className="flex h-full w-full items-center justify-center rounded-full bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.35),transparent_55%)]">
+            <ChatCircleDots className="size-9 text-white drop-shadow-[0_4px_10px_rgba(0,0,0,0.22)]" weight="fill" />
+          </span>
+        </Button>
       )}
     </div>
   )

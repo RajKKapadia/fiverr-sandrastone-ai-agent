@@ -47,7 +47,6 @@ WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.json ./
 COPY data ./data
-COPY drizzle ./drizzle
 COPY lib ./lib
 
 CMD ["pnpm", "discord:start"]

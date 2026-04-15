@@ -1,6 +1,4 @@
-import { createHash } from "node:crypto"
-
-import { InputGuardrailTripwireTriggered, run } from "@openai/agents"
+import { type AgentInputItem, InputGuardrailTripwireTriggered, run } from "@openai/agents"
 import { z } from "zod"
 
 import { primaryAgent } from "@/lib/agent"
@@ -13,7 +11,12 @@ import {
   endWidgetRequest,
   getWidgetRequestBlockReason,
 } from "@/lib/widget/rate-limit"
-import { DatabaseSessionStore } from "@/lib/widget/session"
+import {
+  buildCorsHeaders,
+  getOrigin,
+  getWidgetRequestUserId,
+  normalizeHistory,
+} from "@/lib/widget/request"
 import type {
   WidgetChatRequest,
   WidgetChatResponse,
@@ -45,6 +48,16 @@ function createWebsiteUserContext(userId: string): UserContext {
   }
 }
 
+function createAgentInput(body: WidgetChatRequest): AgentInputItem[] {
+  return [
+    ...mapWidgetMessagesToAgentItems(body.history),
+    {
+      content: body.message,
+      role: "user",
+    } satisfies AgentInputItem,
+  ]
+}
+
 function isTimeoutError(error: unknown) {
   return (
     error instanceof Error &&
@@ -72,34 +85,6 @@ async function getErrorMessage(
   return "Something went wrong while processing that request."
 }
 
-function normalizeOrigin(origin: string) {
-  return new URL(origin).origin
-}
-
-function getOrigin(request: Request) {
-  const origin = request.headers.get("origin")?.trim()
-
-  if (!origin) {
-    return null
-  }
-
-  try {
-    return normalizeOrigin(origin)
-  } catch {
-    return null
-  }
-}
-
-function buildCorsHeaders(origin: string) {
-  return {
-    "Access-Control-Allow-Headers": "Content-Type",
-    "Access-Control-Allow-Methods": "OPTIONS, POST",
-    "Access-Control-Allow-Origin": origin,
-    "Cache-Control": "no-store",
-    Vary: "Origin",
-  }
-}
-
 function jsonResponseWithCors(
   body: Record<string, unknown>,
   origin: string,
@@ -125,60 +110,6 @@ function jsonError(message: string, status: number, origin?: string) {
       status,
     }
   )
-}
-
-function getClientAddress(request: Request) {
-  const forwardedFor = request.headers.get("x-forwarded-for")?.trim()
-
-  if (forwardedFor) {
-    const firstAddress = forwardedFor.split(",")[0]?.trim()
-
-    if (firstAddress) {
-      return firstAddress
-    }
-  }
-
-  return (
-    request.headers.get("cf-connecting-ip")?.trim() ||
-    request.headers.get("x-real-ip")?.trim() ||
-    null
-  )
-}
-
-function getWidgetRequestUserId(request: Request, origin: string) {
-  const clientAddress = getClientAddress(request) ?? "unknown-address"
-  const userAgent = request.headers.get("user-agent")?.trim() ?? "unknown-agent"
-  const requestKey = createHash("sha256")
-    .update(`${origin}\n${clientAddress}\n${userAgent}`)
-    .digest("hex")
-
-  return `website:${requestKey}`
-}
-
-function normalizeHistory(body: WidgetChatRequest) {
-  const lastHistoryEntry = body.history.at(-1)
-
-  if (
-    lastHistoryEntry?.role === "user" &&
-    lastHistoryEntry.content.trim() === body.message
-  ) {
-    return body.history.slice(0, -1)
-  }
-
-  return body.history
-}
-
-async function synchronizeSessionWithHistory(
-  session: DatabaseSessionStore,
-  history: WidgetChatRequest["history"]
-) {
-  await session.clearSession()
-
-  const items = mapWidgetMessagesToAgentItems(history)
-
-  if (items.length > 0) {
-    await session.addItems(items)
-  }
 }
 
 export async function OPTIONS(request: Request) {
@@ -227,16 +158,12 @@ export async function POST(request: Request) {
 
   beginWidgetRequest(userId)
 
-  const session = new DatabaseSessionStore(userId)
   const userContext = createWebsiteUserContext(userId)
 
   try {
-    await synchronizeSessionWithHistory(session, body.history)
-
-    const result = await run(primaryAgent, body.message, {
+    const result = await run(primaryAgent, createAgentInput(body), {
       context: userContext,
       maxTurns: 8,
-      session,
       signal: AbortSignal.timeout(AGENT_TIMEOUT_MS),
     })
 

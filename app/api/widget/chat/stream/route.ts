@@ -1,13 +1,26 @@
-import { InputGuardrailTripwireTriggered, run } from "@openai/agents"
+import { type AgentInputItem, InputGuardrailTripwireTriggered, run } from "@openai/agents"
 import { z } from "zod"
 
 import { primaryAgent } from "@/lib/agent"
 import { generateOutOfScopeResponse } from "@/lib/agent/out-of-scope"
 import type { UserContext } from "@/lib/types"
-import { getBearerToken, getWidgetUserId, verifyWidgetSessionToken } from "@/lib/widget/auth"
-import { beginWidgetRequest, endWidgetRequest, getWidgetRequestBlockReason } from "@/lib/widget/rate-limit"
-import { DatabaseSessionStore } from "@/lib/widget/session"
-import type { WidgetChatStreamRequest, WidgetMessage } from "@/lib/widget/types"
+import {
+  getBearerToken,
+  getWidgetUserId,
+  verifyWidgetSessionToken,
+} from "@/lib/widget/auth"
+import { mapWidgetMessagesToAgentItems } from "@/lib/widget/messages"
+import {
+  beginWidgetRequest,
+  endWidgetRequest,
+  getWidgetRequestBlockReason,
+} from "@/lib/widget/rate-limit"
+import { normalizeHistory } from "@/lib/widget/request"
+import type {
+  WidgetChatRequest,
+  WidgetChatResponse,
+  WidgetMessage,
+} from "@/lib/widget/types"
 
 export const runtime = "nodejs"
 
@@ -15,6 +28,14 @@ const AGENT_TIMEOUT_MS = 30_000
 const MAX_QUERY_LENGTH = 2_000
 
 const widgetChatStreamRequestSchema = z.object({
+  history: z
+    .array(
+      z.object({
+        content: z.string().trim().min(1).max(MAX_QUERY_LENGTH),
+        role: z.enum(["assistant", "user"]),
+      })
+    )
+    .default([]),
   message: z.string().trim().min(1).max(MAX_QUERY_LENGTH),
 })
 
@@ -30,6 +51,16 @@ function createWebsiteUserContext(userId: string): UserContext {
   }
 }
 
+function createAgentInput(body: WidgetChatRequest): AgentInputItem[] {
+  return [
+    ...mapWidgetMessagesToAgentItems(body.history),
+    {
+      content: body.message,
+      role: "user",
+    } satisfies AgentInputItem,
+  ]
+}
+
 function isTimeoutError(error: unknown) {
   return (
     error instanceof Error &&
@@ -39,10 +70,13 @@ function isTimeoutError(error: unknown) {
   )
 }
 
-async function getErrorMessage(error: unknown, input: {
-  message: string
-  userContext: UserContext
-}) {
+async function getErrorMessage(
+  error: unknown,
+  input: {
+    message: string
+    userContext: UserContext
+  }
+) {
   if (error instanceof InputGuardrailTripwireTriggered) {
     return generateOutOfScopeResponse(input)
   }
@@ -102,7 +136,10 @@ export async function POST(request: Request) {
     )
   }
 
-  const body: WidgetChatStreamRequest = parsed.data
+  const body: WidgetChatRequest = {
+    ...parsed.data,
+    history: normalizeHistory(parsed.data),
+  }
   const userId = getWidgetUserId(claims)
   const requestBlockReason = getWidgetRequestBlockReason(userId)
 
@@ -124,7 +161,7 @@ export async function POST(request: Request) {
 
   const assistantMessageId = crypto.randomUUID()
   const encoder = new TextEncoder()
-  const session = new DatabaseSessionStore(userId)
+  const userContext = createWebsiteUserContext(userId)
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
       const send = (event: string, data: unknown) => {
@@ -132,10 +169,9 @@ export async function POST(request: Request) {
       }
 
       try {
-        const result = await run(primaryAgent, body.message, {
-          context: createWebsiteUserContext(userId),
+        const result = await run(primaryAgent, createAgentInput(body), {
+          context: userContext,
           maxTurns: 8,
-          session,
           signal: AbortSignal.timeout(AGENT_TIMEOUT_MS),
           stream: true,
         })
@@ -180,7 +216,7 @@ export async function POST(request: Request) {
             id: assistantMessageId,
             role: "assistant",
           } satisfies WidgetMessage,
-        })
+        } satisfies WidgetChatResponse)
       } catch (error) {
         console.error("[Widget] Stream request failed", {
           error: error instanceof Error ? error.message : String(error),
@@ -191,7 +227,7 @@ export async function POST(request: Request) {
         send("error", {
           message: await getErrorMessage(error, {
             message: body.message,
-            userContext: createWebsiteUserContext(userId),
+            userContext,
           }),
         })
       } finally {

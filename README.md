@@ -103,6 +103,32 @@ Response body:
 Browser clients must send the request from an allowed `Origin` with
 `Content-Type: application/json`.
 
+## Streaming Widget Chat API
+
+Use `POST /api/widget/chat/stream` to stream the assistant reply. The widget
+keeps chat history in the browser and sends that history with each request.
+
+Request body:
+
+```json
+{
+  "message": "What does Sandra say about broker application secrets?",
+  "history": [
+    {
+      "role": "user",
+      "content": "Hi"
+    },
+    {
+      "role": "assistant",
+      "content": "Hello, how can I help?"
+    }
+  ]
+}
+```
+
+The embedded iframe uses the signed widget bearer token from bootstrap for this
+route. There is no server-side chat history endpoint anymore.
+
 ## Docker
 
 Build and run only the web app on port `4100`:
@@ -132,5 +158,5 @@ This starts:
 
 Both services use the same `.env` file. The containers expect the same runtime
 environment variables as the local app, including `OPENAI_API_KEY`,
-`OPENAI_VECTOR_STORE_ID`, `DATABASE_URL`, `ADMIN_EMAIL`, `ADMIN_PASSWORD`, and
-the Discord bot variables.
+`OPENAI_VECTOR_STORE_ID`, `ADMIN_EMAIL`, `ADMIN_PASSWORD`,
+`WIDGET_SIGNING_SECRET`, `WIDGET_SITE_CONFIGS`, and the Discord bot variables.

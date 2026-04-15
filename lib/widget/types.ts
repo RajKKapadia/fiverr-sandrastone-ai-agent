@@ -32,14 +32,6 @@ export type WidgetMessage = {
 
 export type WidgetChatHistoryEntry = Pick<WidgetMessage, "content" | "role">
 
-export type WidgetHistoryResponse = {
-  messages: WidgetMessage[]
-}
-
-export type WidgetChatStreamRequest = {
-  message: string
-}
-
 export type WidgetChatRequest = {
   history: WidgetChatHistoryEntry[]
   message: string
